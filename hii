@@ -1,1 +1,1033 @@
-ftyy
+Q1. Database Design (3 Marks)
+Create four tables with primary keys, foreign keys, uniqueness, required values, checks, and defaults.
+CREATE TABLE Category
+(
+ CategoryId INT PRIMARY KEY IDENTITY(1,1),
+ CategoryName VARCHAR(100) NOT NULL UNIQUE
+);
+CREATE TABLE Supplier
+(
+ SupplierId INT PRIMARY KEY IDENTITY(1,1),
+ SupplierName VARCHAR(100) NOT NULL,
+ Phone VARCHAR(15) UNIQUE
+);
+CREATE TABLE Product
+(
+ ProductId INT PRIMARY KEY IDENTITY(1,1),
+ ProductName VARCHAR(100) NOT NULL,
+ CategoryId INT NOT NULL,
+ SupplierId INT NOT NULL,
+ Price DECIMAL(10,2) NOT NULL CHECK (Price >= 0),
+ CurrentStock INT NOT NULL DEFAULT 0
+ CHECK (CurrentStock >= 0),
+ FOREIGN KEY (CategoryId) REFERENCES Category(CategoryId),
+ FOREIGN KEY (SupplierId) REFERENCES Supplier(SupplierId)
+);
+CREATE TABLE StockTransaction
+(
+ TransactionId INT PRIMARY KEY IDENTITY(1,1),
+ ProductId INT NOT NULL,
+ TransactionType VARCHAR(10) NOT NULL
+ CHECK (TransactionType IN ('IN', 'OUT')),
+ Quantity INT NOT NULL CHECK (Quantity > 0),
+ TransactionDate DATETIME2 NOT NULL DEFAULT SYSDATETIME(),
+ FOREIGN KEY (ProductId) REFERENCES Product(ProductId)
+);
+Relationships: One category has many products; one supplier can supply many products; one product can have many
+stock transactions. Primary and foreign keys identify records and maintain referential integrity.
+Q2. SQL Query Writing (4 Marks)
+1. Find the second-highest distinct salary
+SELECT MAX(Salary) AS SecondHighestSalary
+FROM Employees
+WHERE Salary < (SELECT MAX(Salary) FROM Employees);
+2. Department-wise average salary greater than 50,000
+SELECT d.DepartmentName, AVG(e.Salary) AS AverageSalary
+FROM Employees e
+JOIN Departments d ON e.DepartmentId = d.DepartmentId
+GROUP BY d.DepartmentId, d.DepartmentName
+HAVING AVG(e.Salary) > 50000;
+3. Employees who joined in the last two years
+SELECT *
+FROM Employees
+WHERE JoiningDate >= DATEADD(YEAR, -2, GETDATE())
+ AND JoiningDate <= GETDATE();
+4. Employee name and manager name using SELF JOIN
+SELECT e.Name AS EmployeeName, m.Name AS ManagerName
+SQL & ASP.NET Core Examination — Answers Page 2
+FROM Employees e
+LEFT JOIN Employees m ON e.ManagerId = m.EmployeeId;
+SQL & ASP.NET Core Examination — Answers Page 3
+Section A: SQL (continued)
+Q3. Advanced SQL (4 Marks)
+1. View displaying product name, category name and current stock
+CREATE VIEW vw_ProductStock
+AS
+SELECT p.ProductName, c.CategoryName, p.CurrentStock
+FROM Product p
+JOIN Category c ON p.CategoryId = c.CategoryId;
+-- Use the view
+SELECT * FROM vw_ProductStock;
+2. Stored procedure to insert a product
+CREATE PROCEDURE InsertProduct
+ @ProductName VARCHAR(100),
+ @CategoryId INT,
+ @SupplierId INT,
+ @Price DECIMAL(10,2),
+ @CurrentStock INT
+AS
+BEGIN
+ SET NOCOUNT ON;
+ INSERT INTO Product
+ (ProductName, CategoryId, SupplierId, Price, CurrentStock)
+ VALUES
+ (@ProductName, @CategoryId, @SupplierId, @Price, @CurrentStock);
+END;
+-- Example
+EXEC InsertProduct 'Keyboard', 1, 1, 750.00, 20;
+3. Trigger to store old salary when salary changes
+CREATE TABLE SalaryAudit
+(
+ AuditId INT IDENTITY(1,1) PRIMARY KEY,
+ EmployeeId INT NOT NULL,
+ OldSalary DECIMAL(10,2),
+ ChangedDate DATETIME2 DEFAULT SYSDATETIME()
+);
+CREATE TRIGGER trg_SalaryUpdate
+ON Employees
+AFTER UPDATE
+AS
+BEGIN
+ SET NOCOUNT ON;
+ INSERT INTO SalaryAudit (EmployeeId, OldSalary)
+ SELECT d.EmployeeId, d.Salary
+ FROM deleted d
+ INNER JOIN inserted i ON d.EmployeeId = i.EmployeeId
+ WHERE d.Salary <> i.Salary
+ OR (d.Salary IS NULL AND i.Salary IS NOT NULL)
+ OR (d.Salary IS NOT NULL AND i.Salary IS NULL);
+END;
+4. Transaction to transfer 5,000 using COMMIT and ROLLBACK
+BEGIN TRY
+ BEGIN TRANSACTION;
+ UPDATE BankAccount
+ SET Balance = Balance - 5000
+ WHERE AccountId = 1 AND Balance >= 5000;
+ IF @@ROWCOUNT <> 1
+ THROW 50001, 'Insufficient balance or account not found.', 1;
+ UPDATE BankAccount
+ SET Balance = Balance + 5000
+ WHERE AccountId = 2;
+ IF @@ROWCOUNT <> 1
+ THROW 50002, 'Destination account not found.', 1;
+ COMMIT TRANSACTION;
+END TRY
+BEGIN CATCH
+ IF XACT_STATE() <> 0 ROLLBACK TRANSACTION;
+ THROW;
+END CATCH;
+SQL & ASP.NET Core Examination — Answers Page 4
+The transaction commits both changes together. If either update fails, rollback prevents an incomplete transfer.
+Q4. SQL Concepts (4 Marks)
+1. Why create indexes, and when should they be avoided?
+Indexes speed up SELECT queries, joins, filtering and sorting. Avoid excessive indexes on tables with frequent inserts,
+updates or deletes because indexes use storage and increase write-maintenance costs.
+2. WHERE vs HAVING
+WHERE HAVING
+Filters rows before grouping. Filters groups after GROUP BY.
+Usually uses row-level conditions. Often filters aggregate values.
+-- WHERE example
+SELECT DepartmentId, AVG(Salary) AS AverageSalary
+FROM Employees
+WHERE Salary > 30000
+GROUP BY DepartmentId;
+-- HAVING example
+SELECT DepartmentId, AVG(Salary) AS AverageSalary
+FROM Employees
+GROUP BY DepartmentId
+HAVING AVG(Salary) > 50000;
+3. Clustered vs non-clustered index
+A clustered index organizes table rows by its key; a table can have only one. A non-clustered index stores keys and row
+locators separately from the data; a table can have multiple.
+CREATE CLUSTERED INDEX IX_Employees_EmployeeId
+ON Employees(EmployeeId);
+CREATE NONCLUSTERED INDEX IX_Employees_Name
+ON Employees(Name);
+The clustered-index command assumes the table does not already have one.
+4. What happens when COMMIT and ROLLBACK execute?
+COMMIT: completes the transaction, makes its changes permanent, and releases applicable locks. ROLLBACK: undoes
+uncommitted changes using transaction log information and releases applicable locks when rollback completes.
+SQL & ASP.NET Core Examination — Answers Page 5
+Section B: ASP.NET Core & C# (15 Marks)
+Q5. C# Programming (3 Marks)
+The program below uses an Employee class, constructor, properties, method, validation, and a custom exception.
+using System;
+public class InvalidSalaryException : Exception
+{
+ public InvalidSalaryException(string message) : base(message) { }
+}
+public class Employee
+{
+ public int EmployeeId { get; set; }
+ public string Name { get; set; }
+ private decimal salary;
+ public decimal Salary
+ {
+ get => salary;
+ set
+ {
+ if (value < 0)
+ throw new InvalidSalaryException(
+ "Salary cannot be negative.");
+ salary = value;
+ }
+ }
+ public Employee(int employeeId, string name, decimal salary)
+ {
+ EmployeeId = employeeId;
+ Name = name;
+ Salary = salary;
+ }
+ public void DisplayDetails()
+ {
+ Console.WriteLine($"ID: {EmployeeId}");
+ Console.WriteLine($"Name: {Name}");
+ Console.WriteLine($"Salary: {Salary}");
+ }
+}
+public class Program
+{
+ public static void Main()
+ {
+ try
+ {
+ Employee emp = new Employee(1, "Ravi", 35000);
+ emp.DisplayDetails();
+ emp.Salary = -1000;
+ }
+ catch (InvalidSalaryException ex)
+ {
+ Console.WriteLine(ex.Message);
+ }
+ }
+}
+Q6. ASP.NET Core API Design (4 Marks)
+Operation Method Endpoint Body Success
+Add student POST /api/students Student JSON 201 Created
+Update PUT /api/students/{id} Updated student JSON 204 No Content
+Delete DELETE /api/students/{id} None 204 No Content
+Get by ID GET /api/students/{id} None 200 OK
+Get all / pagination GET /api/students?page=1&pageSize;=10 None 200 OK
+Search by name GET /api/students/search?name=Ravi None 200 OK
+Example request body for adding a student
+{
+ "name": "Ravi Kumar",
+SQL & ASP.NET Core Examination — Answers Page 6
+ "email": "ravi@example.com",
+ "courseId": 1
+}
+Example controller endpoints (add, get by ID, pagination, search)
+[ApiController]
+[Route("api/[controller]")]
+public class StudentsController : ControllerBase
+{
+ private readonly AppDbContext _context;
+ public StudentsController(AppDbContext context) => _context = context;
+ [HttpPost]
+ public async Task<IActionResult> AddStudent(Student student)
+ {
+ _context.Students.Add(student);
+ await _context.SaveChangesAsync();
+ return CreatedAtAction(nameof(GetStudentById),
+ new { id = student.StudentId }, student);
+ }
+ [HttpGet("{id:int}")]
+ public async Task<IActionResult> GetStudentById(int id)
+ {
+ var student = await _context.Students.FindAsync(id);
+ if (student == null) return NotFound();
+ return Ok(student);
+ }
+ [HttpGet]
+ public async Task<IActionResult> GetAllStudents(
+ int page = 1, int pageSize = 10)
+ {
+ page = Math.Max(page, 1);
+ pageSize = Math.Clamp(pageSize, 1, 100);
+ var students = await _context.Students.AsNoTracking()
+ .OrderBy(s => s.StudentId)
+ .Skip((page - 1) * pageSize)
+ .Take(pageSize)
+ .ToListAsync();
+ return Ok(students);
+ }
+ [HttpGet("search")]
+ public async Task<IActionResult> SearchStudents(string name)
+ {
+ if (string.IsNullOrWhiteSpace(name))
+ return BadRequest("Name is required.");
+ var students = await _context.Students.AsNoTracking()
+ .Where(s => s.Name.Contains(name))
+ .ToListAsync();
+ return Ok(students);
+ }
+}
+Implement update and delete similarly using PUT and DELETE routes. Validate inputs, check record existence, and return 404 for
+missing records or 400 for invalid input.
+SQL & ASP.NET Core Examination — Answers Page 7
+Q7. Entity Framework Core (4 Marks)
+1. DbContext class and 2. one-to-many Fluent API relationship
+using Microsoft.EntityFrameworkCore;
+public class AppDbContext : DbContext
+{
+ public AppDbContext(DbContextOptions<AppDbContext> options)
+ : base(options) { }
+ public DbSet<Student> Students { get; set; }
+ public DbSet<Course> Courses { get; set; }
+ protected override void OnModelCreating(ModelBuilder modelBuilder)
+ {
+ modelBuilder.Entity<Student>()
+ .HasOne(s => s.Course)
+ .WithMany(c => c.Students)
+ .HasForeignKey(s => s.CourseId);
+ base.OnModelCreating(modelBuilder);
+ }
+}
+public class Course
+{
+ public int CourseId { get; set; }
+ public string CourseName { get; set; } = string.Empty;
+ public ICollection<Student> Students { get; set; } = new List<Student>();
+}
+public class Student
+{
+ public int StudentId { get; set; }
+ public string Name { get; set; } = string.Empty;
+ public int CourseId { get; set; }
+ public Course Course { get; set; } = null!;
+}
+HasOne means each student has one course; WithMany means one course can have many students; HasForeignKey
+identifies CourseId as the foreign key.
+3. Add-Migration and Update-Database
+Add-Migration InitialCreate
+Update-Database
+Add-Migration generates a migration describing schema changes from the EF Core model. Update-Database applies
+pending migrations to the configured database.
+4. Why controllers should not directly access DbContext
+Controllers should ideally call a service layer. This separates HTTP handling from business logic and data access,
+improves maintainability and testability, enables reuse, and keeps controllers clean.
+Q8. Production Scenario — JWT API returns 401 Unauthorized (4 Marks)
+1. Missing or invalid JWT
+Check the request headers and ensure the client sends the token as follows:
+GET /api/students
+Authorization: Bearer YOUR_JWT_TOKEN
+2. Expired access token
+Inspect the JWT exp claim and server time. If expired, obtain a new access token through the refresh-token endpoint when
+supported.
+3. Incorrect JWT validation settings
+Verify issuer, audience, signing key, signature validation, and lifetime settings. These values must match those used to
+issue the token.
+builder.Services
+ .AddAuthentication(
+ Microsoft.AspNetCore.Authentication.JwtBearer
+ .JwtBearerDefaults.AuthenticationScheme)
+ .AddJwtBearer(options =>
+ {
+ options.TokenValidationParameters =
+ new Microsoft.IdentityModel.Tokens.TokenValidationParameters
+SQL & ASP.NET Core Examination — Answers Page 8
+ {
+ ValidateIssuer = true,
+ ValidateAudience = true,
+ ValidateLifetime = true,
+ ValidateIssuerSigningKey = true,
+ ValidIssuer = builder.Configuration["Jwt:Issuer"],
+ ValidAudience = builder.Configuration["Jwt:Audience"],
+ IssuerSigningKey =
+ new Microsoft.IdentityModel.Tokens.SymmetricSecurityKey(
+ System.Text.Encoding.UTF8.GetBytes(
+ builder.Configuration["Jwt:Key"]!))
+ };
+ });
+4. Authentication middleware missing or incorrectly ordered
+app.UseRouting();
+app.UseAuthentication();
+app.UseAuthorization();
+app.MapControllers();
+Confirm authentication services are registered and UseAuthentication runs before UseAuthorization. A 401 generally
+means authentication failed; a 403 generally means the user is authenticated but lacks permission.
+SQL & ASP.NET Core Examination — Answers Page 9
+Final Revision Checklist
+Q1: Database design, primary and foreign keys, constraints.
+Q2: Aggregate queries, date functions, self joins, second-highest salary.
+Q3: Views, stored procedures, triggers, transactions.
+Q4: Indexes, WHERE vs HAVING, clustered/non-clustered indexes, COMMIT/ROLLBACK.
+Q5: Classes, constructors, properties, custom exceptions.
+Q6: REST endpoints, HTTP methods, status codes, pagination.
+Q7: DbContext, Fluent API, migrations, layered architecture.
+Q8: JWT validation, token expiry, middleware, troubleshooting
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+a) Design the layered architecture
+A layered architecture separates responsibilities into different layers, making the application easier to maintain, test,
+and extend.
+Swagger_DocumentationAPI
+■■■ Controllers
+■ ■■■ EmployeesController.cs
+■■■ Services
+■ ■■■ IEmployeeService.cs
+■ ■■■ EmployeeService.cs
+■■■ Repositories
+■ ■■■ IEmployeeRepository.cs
+■ ■■■ EmployeeRepository.cs
+■■■ Data
+■ ■■■ AppDbContext.cs
+■■■ Models
+■ ■■■ Employee.cs
+■■■ DTOs
+■ ■■■ CreateEmployeeDto.cs
+■■■ Program.cs
+b) Responsibilities of each layer
+Layer Responsibility
+Controller Handles HTTP requests and responses.
+Service Implements business rules and coordinates operations.
+Repository Performs database queries and CRUD operations.
+Data / EF Core Defines DbContext, entity mappings, and database configuration.
+Validation Checks input data using DTOs, attributes, or service-level rules.
+Transactions Ensures related database operations succeed or fail together.
+Logging Records errors and important events using ILogger.
+c) Repository, service, and dependency injection
+IEmployeeRepository.cs
+public interface IEmployeeRepository
+{
+ Task<Employee?> GetByIdAsync(int id);
+ Task<Employee?> GetActiveByEmailAsync(string email);
+ Task AddAsync(Employee employee);
+ Task SaveChangesAsync();
+}
+IEmployeeService.cs
+public interface IEmployeeService
+{
+ Task<Employee> CreateAsync(Employee employee);
+}
+EmployeeRepository.cs
+public class EmployeeRepository : IEmployeeRepository
+{
+ private readonly AppDbContext _context;
+ public EmployeeRepository(AppDbContext context) => _context = context;
+ public Task<Employee?> GetByIdAsync(int id) =>
+ _context.Employees.FirstOrDefaultAsync(e => e.EmployeeId == id);
+ public Task<Employee?> GetActiveByEmailAsync(string email) =>
+ _context.Employees.FirstOrDefaultAsync(
+ e => e.Email == email && e.Status == "Active");
+ public async Task AddAsync(Employee employee) =>
+ await _context.Employees.AddAsync(employee);
+ASP.NET Core + SQL Advanced Assessment — Answers Page 3
+ public async Task SaveChangesAsync() =>
+ await _context.SaveChangesAsync();
+}
+EmployeeService.cs
+public class EmployeeService : IEmployeeService
+{
+ private readonly IEmployeeRepository _repository;
+ public EmployeeService(IEmployeeRepository repository) =>
+ _repository = repository;
+ public async Task<Employee> CreateAsync(Employee employee)
+ {
+ var existing = await _repository.GetActiveByEmailAsync(employee.Email);
+ if (existing != null)
+ throw new InvalidOperationException(
+ "An active employee already uses this email.");
+ employee.Status = "Active";
+ await _repository.AddAsync(employee);
+ await _repository.SaveChangesAsync();
+ return employee;
+ }
+}
+Program.cs — Dependency injection
+builder.Services.AddScoped<IEmployeeRepository, EmployeeRepository>();
+builder.Services.AddScoped<IEmployeeService, EmployeeService>();
+d) Prevent duplicate active employee emails
+The rule belongs in the service layer because it is a business rule. Also enforce it in the database to prevent
+concurrent requests from creating duplicates.
+CREATE UNIQUE INDEX UX_Employees_Active_Email
+ON Employees(Email)
+WHERE Status = 'Active';
+This assumes email comparisons and uniqueness follow the database collation. Catch a unique-constraint violation and return
+HTTP 409 Conflict.
+ASP.NET Core + SQL Advanced Assessment — Answers Page 4
+Question 2 — Employee Reporting and Advanced SQL (6 Marks)
+a) Active employee count and average salary by department
+SELECT d.DepartmentName,
+ COUNT(e.EmployeeId) AS EmployeeCount,
+ AVG(CAST(e.Salary AS DECIMAL(18,2))) AS AverageSalary
+FROM Department d
+LEFT JOIN Employee e
+ ON d.DepartmentId = e.DepartmentId
+ AND e.Status = 'Active'
+GROUP BY d.DepartmentId, d.DepartmentName;
+b) Highest-paid employee in each department using a window function
+WITH RankedEmployees AS
+(
+ SELECT *,
+ DENSE_RANK() OVER (
+ PARTITION BY DepartmentId ORDER BY Salary DESC
+ ) AS SalaryRank
+ FROM Employee
+ WHERE Status = 'Active'
+)
+SELECT *
+FROM RankedEmployees
+WHERE SalaryRank = 1;
+DENSE_RANK returns all employees tied for the highest salary.
+c) Employees earning more than their department average
+SELECT EmployeeId, Name, DepartmentId, Salary
+FROM Employee e
+WHERE Status = 'Active'
+ AND Salary >
+ (
+ SELECT AVG(CAST(e2.Salary AS DECIMAL(18,2)))
+ FROM Employee e2
+ WHERE e2.DepartmentId = e.DepartmentId
+ AND e2.Status = 'Active'
+ );
+d) CTE to find employees who received a salary increment
+WITH SalaryChanges AS
+(
+ SELECT EmployeeId, Salary,
+ LAG(Salary) OVER (
+ PARTITION BY EmployeeId ORDER BY EffectiveDate
+ ) AS PreviousSalary
+ FROM EmployeeSalaryHistory
+)
+SELECT DISTINCT EmployeeId
+FROM SalaryChanges
+WHERE PreviousSalary IS NOT NULL
+ AND Salary > PreviousSalary;
+e) Second-highest distinct salary in each department
+WITH SalaryRanks AS
+(
+ SELECT EmployeeId, Name, DepartmentId, Salary,
+ DENSE_RANK() OVER (
+ PARTITION BY DepartmentId ORDER BY Salary DESC
+ ) AS SalaryRank
+ FROM Employee
+ WHERE Status = 'Active'
+)
+SELECT EmployeeId, Name, DepartmentId, Salary
+FROM SalaryRanks
+WHERE SalaryRank = 2;
+f) Salary rank within each department
+SELECT EmployeeId, Name, DepartmentId, Salary,
+ RANK() OVER (
+ PARTITION BY DepartmentId ORDER BY Salary DESC
+ASP.NET Core + SQL Advanced Assessment — Answers Page 5
+ ) AS SalaryRank
+FROM Employee
+WHERE Status = 'Active';
+RANK assigns equal ranks to tied salaries and leaves gaps after ties. DENSE_RANK does not leave gaps.
+ASP.NET Core + SQL Advanced Assessment — Answers Page 6
+Question 3 — Employee Management API with Authentication (5
+Marks)
+a) JWT and refresh-token authentication flow
+1. User submits credentials to POST /api/auth/login. 2. The server verifies the password hash and account status. 3. It
+issues a JWT access token valid for 15 minutes and a securely generated refresh token. 4. The client sends the JWT
+as Authorization: Bearer <token> to protected APIs. 5. When the access token expires, the client sends the refresh
+token to /api/auth/refresh-token. The server validates and rotates the refresh token. Logout revokes the refresh token.
+b) Required endpoints
+Method Endpoint Purpose
+POST /api/auth/register Register a user.
+POST /api/auth/login Validate credentials and issue tokens.
+POST /api/auth/refresh-token Validate refresh token and issue new tokens.
+POST /api/auth/logout Revoke the refresh token.
+Example login response (illustrative)
+{
+ "accessToken": "eyJhbGciOiJIUzI1NiIs...",
+ "expiresIn": 900,
+ "refreshToken": "secure-random-token"
+}
+c) Role-based authorization
+[Authorize(Roles = "Admin,HR")]
+[HttpPost]
+public async Task<IActionResult> CreateEmployee(CreateEmployeeDto dto)
+{
+ // Create employee through the service.
+ return Ok();
+}
+[Authorize(Roles = "Admin,HR")]
+[HttpPut("{id:int}")]
+public async Task<IActionResult> UpdateEmployee(int id)
+{
+ // Update employee through the service.
+ return Ok();
+}
+[Authorize(Roles = "Admin")]
+[HttpDelete("{id:int}")]
+public async Task<IActionResult> DeleteEmployee(int id)
+{
+ // Delete employee through the service.
+ return NoContent();
+}
+[Authorize]
+[HttpGet("{id:int}")]
+public async Task<IActionResult> GetEmployee(int id)
+{
+ var userId = User.FindFirst(
+ System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+ var privileged = User.IsInRole("Admin") || User.IsInRole("HR");
+ if (!privileged && userId != id.ToString())
+ return Forbid();
+ // Fetch employee and return result.
+ return Ok();
+}
+The GET example assumes the user ID equals the employee ID. If not, map the authenticated user to the employee record.
+Configure JWT bearer authentication and call UseAuthentication before UseAuthorization.
+d) Secure storage
+ASP.NET Core + SQL Advanced Assessment — Answers Page 7
+• Passwords: use ASP.NET Core Identity or a secure salted password hasher; never store plaintext passwords.
+• Refresh tokens: generate cryptographically random tokens; store token hashes, expiry, user ID, and revocation
+status. Rotate tokens on use and detect reuse where possible.
+• JWT signing key: keep it in a secret manager or secure configuration, never source control.
+e) Security problem with AllowAnonymous
+[Authorize(Roles = "Admin,HR")]
+[HttpGet("employees")]
+public IActionResult GetEmployees()
+{
+ // Return employee records to authorized users.
+ return Ok();
+}
+[AllowAnonymous] bypasses normal authentication requirements. Use it only for endpoints intentionally accessible
+without login, such as login or registration.
+ASP.NET Core + SQL Advanced Assessment — Answers Page 8
+Question 4 — Inventory Transaction, SQL and EF Core (5 Marks)
+a) Why a transaction is required
+A transaction ensures all order operations succeed together or fail together. ACID means Atomicity (all or nothing),
+Consistency (rules remain valid), Isolation (concurrent orders do not consume the same stock incorrectly), and
+Durability (committed changes remain saved).
+b) SQL Server transaction for placing an order
+SET XACT_ABORT ON;
+BEGIN TRY
+ BEGIN TRANSACTION;
+ DECLARE @AvailableStock INT;
+ SELECT @AvailableStock = StockQuantity
+ FROM Products WITH (UPDLOCK, HOLDLOCK)
+ WHERE ProductId = @ProductId;
+ IF @AvailableStock IS NULL
+ THROW 50001, 'Product not found.', 1;
+ IF @AvailableStock < @Quantity
+ THROW 50002, 'Insufficient stock.', 1;
+ UPDATE Products
+ SET StockQuantity = StockQuantity - @Quantity
+ WHERE ProductId = @ProductId
+ AND StockQuantity >= @Quantity;
+ IF @@ROWCOUNT = 0
+ THROW 50003, 'Insufficient stock.', 1;
+ INSERT INTO Orders (CustomerId, OrderDate, TotalAmount)
+ VALUES (@CustomerId, GETDATE(), @TotalAmount);
+ DECLARE @OrderId INT = SCOPE_IDENTITY();
+ INSERT INTO OrderItems (OrderId, ProductId, Quantity, Price)
+ VALUES (@OrderId, @ProductId, @Quantity, @Price);
+ COMMIT TRANSACTION;
+END TRY
+BEGIN CATCH
+ IF XACT_STATE() <> 0
+ ROLLBACK TRANSACTION;
+ THROW;
+END CATCH;
+Declare @ProductId, @Quantity, @CustomerId, @TotalAmount, and @Price as parameters or local variables. For multiple
+products, update all items in the same transaction and use a consistent locking strategy.
+The product row lock prevents another transaction from consuming the same last unit while the first transaction is processing. The
+conditional UPDATE and row-count check provide an additional stock safeguard.
+c) EF Core transaction
+public async Task<int> PlaceOrderAsync(
+ int customerId, int productId, int quantity)
+{
+ if (quantity <= 0)
+ throw new ArgumentOutOfRangeException(nameof(quantity));
+ await using var transaction =
+ await _context.Database.BeginTransactionAsync();
+ try
+ {
+ var product = await _context.Products
+ .FirstOrDefaultAsync(p => p.ProductId == productId);
+ if (product == null || product.StockQuantity < quantity)
+ throw new InvalidOperationException(
+ "Product unavailable or insufficient stock.");
+ASP.NET Core + SQL Advanced Assessment — Answers Page 9
+ product.StockQuantity -= quantity;
+ var order = new Order
+ {
+ CustomerId = customerId,
+ OrderDate = DateTime.UtcNow,
+ TotalAmount = product.Price * quantity
+ };
+ _context.Orders.Add(order);
+ _context.OrderItems.Add(new OrderItem
+ {
+ Order = order,
+ ProductId = productId,
+ Quantity = quantity,
+ Price = product.Price
+ });
+ await _context.SaveChangesAsync();
+ await transaction.CommitAsync();
+ return order.OrderId;
+ }
+ catch
+ {
+ await transaction.RollbackAsync();
+ throw;
+ }
+}
+Production note: a normal read followed by decrement is not sufficient for concurrent orders. Use a conditional atomic stock
+update inside the transaction, verify one row was affected, or use suitable isolation and locking. Retry logic must not create
+duplicate orders.
+d) Risk without a transaction
+If stock is reduced and order creation fails, stock decreases without an order. Inventory becomes inaccurate and
+customers may lose stock without receiving a purchase confirmation. All related changes must be atomic.
+ASP.NET Core + SQL Advanced Assessment — Answers Page 10
+Question 5 — Production API Failure Investigation (4 Marks)
+1. SQL indexing
+Create indexes on frequently filtered and joined columns, such as DepartmentId, Status, and suitable email lookup
+columns. Avoid unnecessary indexes that slow writes.
+2. Query optimization and execution plans
+Select only required columns, use suitable joins, avoid N+1 queries, and inspect SQL Server execution plans for scans
+and expensive operations.
+3. Pagination
+Use Skip/Take or keyset pagination and enforce a maximum page size to reduce memory and bandwidth.
+4. Async programming
+Use async/await with EF Core methods such as ToListAsync and SaveChangesAsync so request threads are not
+blocked while waiting for database operations.
+5. Caching
+Cache suitable repeated reads with IMemoryCache or distributed cache such as Redis. Invalidate or update cached
+data when employees change.
+6. Global exception handling
+Use exception-handling middleware and standardized ProblemDetails responses. Log details internally; do not expose
+stack traces to clients.
+7. Structured logging
+Use ILogger, request correlation IDs, query-duration logging, and monitoring tools such as OpenTelemetry or
+Application Insights to trace slow requests and SQL.
+8. File validation
+Limit upload size, verify allowed image formats and file signatures, generate safe filenames, and resize images when
+appropriate.
+9. Rate limiting
+Configure ASP.NET Core rate limiting with suitable per-user or per-client limits to reduce overload and abuse.
+Example: EF Core pagination
+[HttpGet]
+public async Task<IActionResult> GetEmployees(
+ int page = 1, int pageSize = 20)
+{
+ page = Math.Max(page, 1);
+ pageSize = Math.Clamp(pageSize, 1, 100);
+ var employees = await _context.Employees
+ .AsNoTracking()
+ .OrderBy(e => e.EmployeeId)
+ .Skip((page - 1) * pageSize)
+ .Take(pageSize)
+ .Select(e => new
+ {
+ e.EmployeeId,
+ e.Name,
+ e.DepartmentId,
+ e.Salary
+ })
+ .ToListAsync();
+ return Ok(employees);
+}
+ASP.NET Core + SQL Advanced Assessment — Answers Page 11
+Example: global exception handling registration
+// Register and configure exception handling services in Program.cs.
+app.UseExceptionHandler();
+Configure the exception handler to log details and return safe ProblemDetails responses. The registration alone relies on the
+application's configured exception handler
+
+
+
+
+
+
+
+
+
+
+a) Employees whose salary is greater than their department average
+SELECT e.EmployeeId, e.Name, e.DepartmentId, e.Salary
+FROM Employee e
+WHERE e.Salary >
+(
+ SELECT AVG(e2.Salary)
+ FROM Employee e2
+ WHERE e2.DepartmentId = e.DepartmentId
+);
+The subquery calculates the average salary for each employee's department. The outer query returns employees earning more
+than that average.
+b) Department name, employee count, average salary and highest salary
+SELECT d.DepartmentName,
+ COUNT(e.EmployeeId) AS EmployeeCount,
+ AVG(e.Salary) AS AverageSalary,
+ MAX(e.Salary) AS HighestSalary
+FROM Department d
+LEFT JOIN Employee e ON d.DepartmentId = e.DepartmentId
+GROUP BY d.DepartmentId, d.DepartmentName
+ORDER BY AverageSalary DESC;
+COUNT counts employees, AVG calculates average salary, MAX finds the highest salary, and LEFT JOIN includes
+departments with no employees.
+c) Employees not assigned to any project
+SELECT e.EmployeeId, e.Name
+FROM Employee e
+WHERE NOT EXISTS
+(
+ SELECT 1 FROM Project p
+ WHERE p.EmployeeId = e.EmployeeId
+);
+NOT EXISTS returns employees for whom no matching project record exists.
+SQL + ASP.NET Core Written Test — Answers Page 2
+Question 2 — SQL Design and Optimization (5 Marks)
+Given query
+SELECT *
+FROM Employee
+WHERE DepartmentId = 5
+ AND Salary > 50000
+ORDER BY JoiningDate DESC;
+1. Why is it slow?
+Possible reasons: the table contains many records; SQL Server may scan the table; suitable indexes may be missing; SELECT
+* retrieves unnecessary columns; sorting by JoiningDate may require an expensive sort; and the filters may match many rows.
+2. Which index would you create?
+CREATE NONCLUSTERED INDEX IX_Employee_Department_Salary_JoiningDate
+ON Employee (DepartmentId, Salary, JoiningDate DESC);
+This can help filtering and reduce reads, but because Salary is a range condition, the index may not fully satisfy the
+JoiningDate ordering. Test alternatives with actual execution plans and representative data.
+3. Rewrite the query for better performance
+SELECT EmployeeId, Name, DepartmentId, Salary, JoiningDate
+FROM Employee
+WHERE DepartmentId = 5
+ AND Salary > 50000
+ORDER BY JoiningDate DESC;
+Selecting only required columns reduces unnecessary data retrieval; the filtering and sorting logic remains unchanged.
+4. Verify the optimization
+Compare actual execution plans; check scans, seeks and sorts; measure logical reads and execution time; test representative
+workloads; and monitor the write overhead of the new index.
+SET STATISTICS IO ON;
+SET STATISTICS TIME ON;
+SELECT EmployeeId, Name, DepartmentId, Salary, JoiningDate
+FROM Employee
+WHERE DepartmentId = 5 AND Salary > 50000
+ORDER BY JoiningDate DESC;
+SET STATISTICS IO OFF;
+SET STATISTICS TIME OFF;
+Question 3 — SQL Concepts (5 Marks)
+1. DELETE vs TRUNCATE vs DROP
+DELETE TRUNCATE DROP
+Removes selected or all rows; supports
+WHERE.
+Removes all rows; no WHERE; table
+remains.
+Removes the table object and definition.
+Logs row deletions in SQL Server. Generally uses less logging for row removal. Removes the object itself.
+Examples
+DELETE FROM Employee WHERE EmployeeId = 1;
+TRUNCATE TABLE Employee;
+DROP TABLE Employee;
+In SQL Server, TRUNCATE can be rolled back inside a transaction, subject to applicable restrictions.
+2. INNER JOIN, LEFT JOIN and FULL OUTER JOIN
+INNER JOIN returns matching rows only. LEFT JOIN returns all left-side rows plus matches. FULL OUTER JOIN returns all
+rows from both sides, matching where possible.
+SELECT e.Name, d.DepartmentName
+FROM Employee e INNER JOIN Department d
+ ON e.DepartmentId = d.DepartmentId;
+SELECT e.Name, d.DepartmentName
+FROM Employee e LEFT JOIN Department d
+ ON e.DepartmentId = d.DepartmentId;
+SELECT e.Name, d.DepartmentName
+FROM Employee e FULL OUTER JOIN Department d
+SQL + ASP.NET Core Written Test — Answers Page 3
+ ON e.DepartmentId = d.DepartmentId;
+3. Clustered and non-clustered indexes
+A clustered index organizes table data rows by the index key; a table can have only one. A non-clustered index stores keys
+and row locators separately from table data; a table can have multiple.
+CREATE CLUSTERED INDEX IX_Employee_Id ON Employee(EmployeeId);
+CREATE NONCLUSTERED INDEX IX_Employee_Name ON Employee(Name);
+The clustered-index command assumes the table does not already have a clustered index.
+4. What is a deadlock? How can it be prevented?
+A deadlock occurs when transactions wait for resources held by one another. SQL Server normally detects it and chooses one
+transaction as the victim. Prevent deadlocks by accessing resources in a consistent order, keeping transactions short, indexing
+appropriately, avoiding unnecessary locks, and retrying deadlock victims with a limited retry policy.
+SQL + ASP.NET Core Written Test — Answers Page 4
+Section B — ASP.NET Core Web API (15 Marks)
+Question 4 — API Development (6 Marks)
+Employee model
+public class Employee
+{
+ public int EmployeeId { get; set; }
+ public string Name { get; set; } = string.Empty;
+ public string Email { get; set; } = string.Empty;
+ public decimal Salary { get; set; }
+}
+Employee controller: GET all, GET by ID, and POST
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+[ApiController]
+[Route("api/[controller]")]
+public class EmployeeController : ControllerBase
+{
+ private readonly AppDbContext _context;
+ public EmployeeController(AppDbContext context)
+ {
+ _context = context;
+ }
+ [HttpGet]
+ public async Task<IActionResult> GetAllEmployees()
+ {
+ var employees = await _context.Employees
+ .AsNoTracking().ToListAsync();
+ return Ok(employees);
+ }
+ [HttpGet("{id:int}")]
+ public async Task<IActionResult> GetEmployeeById(int id)
+ {
+ var employee = await _context.Employees.FindAsync(id);
+ if (employee == null) return NotFound();
+ return Ok(employee);
+ }
+ [HttpPost]
+ public async Task<IActionResult> CreateEmployee(Employee employee)
+ {
+ if (!ModelState.IsValid)
+ return ValidationProblem(ModelState);
+ _context.Employees.Add(employee);
+ await _context.SaveChangesAsync();
+ return CreatedAtAction(nameof(GetEmployeeById),
+ new { id = employee.EmployeeId }, employee);
+ }
+}
+HTTP status codes
+Code Meaning
+200 OK Request succeeded and data returned.
+201 Created Employee created successfully.
+400 Bad Request Request data is invalid.
+404 Not Found Employee does not exist.
+500 Internal Server Error Unexpected server error.
+Question 5 — Exception Handling and Validation (4 Marks)
+1. Validated request DTO
+using System.ComponentModel.DataAnnotations;
+public class CreateEmployeeDto
+{
+ [Required]
+ [StringLength(100, MinimumLength = 2)]
+ public string Name { get; set; } = string.Empty;
+ [Required]
+ [EmailAddress]
+SQL + ASP.NET Core Written Test — Answers Page 5
+ public string Email { get; set; } = string.Empty;
+ [Range(typeof(decimal), "0", "999999999")]
+ public decimal Salary { get; set; }
+}
+2. Controller example
+[HttpPost]
+public async Task<IActionResult> CreateEmployee(CreateEmployeeDto dto)
+{
+ var employee = new Employee
+ {
+ Name = dto.Name,
+ Email = dto.Email,
+ Salary = dto.Salary
+ };
+ _context.Employees.Add(employee);
+ await _context.SaveChangesAsync();
+ return CreatedAtAction(nameof(GetEmployeeById),
+ new { id = employee.EmployeeId },
+ new {
+ success = true,
+ message = "Employee Created Successfully"
+ });
+}
+With [ApiController], invalid model state automatically returns 400 Bad Request with field-level validation errors.
+3. Global exception handling
+builder.Services.AddProblemDetails();
+var app = builder.Build();
+app.UseExceptionHandler();
+app.MapControllers();
+app.Run();
+Configure the exception handler to log details internally and return standardized Problem Details responses. Do not expose
+stack traces or database details in production.
+The provided sample input is rejected because the name is empty, the email is malformed, and the salary is negative.
+SQL + ASP.NET Core Written Test — Answers Page 6
+Question 6 — Real-Time Scenario (5 Marks)
+Requirements: check duplicate email, reject salary below 15,000, save valid data, and return a standard success response.
+Employee service logic
+using Microsoft.EntityFrameworkCore;
+public class EmployeeService
+{
+ private readonly AppDbContext _context;
+ public EmployeeService(AppDbContext context)
+ {
+ _context = context;
+ }
+ public async Task<object> CreateEmployeeAsync(Employee employee)
+ {
+ // 1. Check whether email already exists.
+ bool emailExists = await _context.Employees
+ .AnyAsync(e => e.Email == employee.Email);
+ if (emailExists)
+ throw new InvalidOperationException("Email already exists.");
+ // 2. Validate minimum salary.
+ if (employee.Salary < 15000)
+ throw new ArgumentException(
+ "Salary must be at least 15000.");
+ // 3. Save employee.
+ _context.Employees.Add(employee);
+ await _context.SaveChangesAsync();
+ // 4. Return success response.
+ return new
+ {
+ success = true,
+ message = "Employee Created Successfully"
+ };
+ }
+}
+Controller endpoint
+[HttpPost]
+public async Task<IActionResult> CreateEmployee(Employee employee)
+{
+ try
+ {
+ var result = await _employeeService.CreateEmployeeAsync(employee);
+ return StatusCode(201, result);
+ }
+ catch (InvalidOperationException ex)
+ {
+ return Conflict(new { success = false, message = ex.Message });
+ }
+ catch (ArgumentException ex)
+ {
+ return BadRequest(new { success = false, message = ex.Message });
+ }
+}
+The controller assumes _employeeService is injected. Use global exception handling for unexpected errors instead of
+duplicating catch-all logic in every controller.
+Expected success response
+{
+ "success": true,
+ "message": "Employee Created Successfully"
+}
+Production note: add a unique database index on Email to prevent duplicate emails during concurrent requests. Validate email
+format and other required fields, and map uniqueness violations to HTTP 409 Conflict.
+Final revision checklist
+Q1: Subqueries, aggregates, GROUP BY, NOT EXISTS.
+Q2: Indexing, execution plans, logical reads and query optimization.
+Q3: DELETE/TRUNCATE/DROP, joins, indexes and deadlocks.
+SQL + ASP.NET Core Written Test — Answers Page 7
+Q4: Controllers, EF Core, CRUD endpoints and HTTP status codes.
+Q5: Data annotations, validation and global exception handling.
+Q6: Service logic, duplicate-email checks, salary validation and database persistence
